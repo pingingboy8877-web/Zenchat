@@ -25,6 +25,9 @@ export default function HomePage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [feed, setFeed] = useState<FeedPost[]>([]);
   const [postText, setPostText] = useState("");
+  const [profileName, setProfileName] = useState("");
+  const [username, setUsername] = useState("");
+  const [showProfileSetup, setShowProfileSetup] = useState(false);
 
   useEffect(() => {
     const client = supabase();
@@ -34,6 +37,10 @@ export default function HomePage() {
       if (data.user) {
         setUserId(data.user.id);
         setEmail(data.user.email ?? "");
+        const { data: profile } = await client.from("profiles").select("display_name,username").eq("id", data.user.id).maybeSingle();
+        setProfileName(profile?.display_name ?? "");
+        setUsername(profile?.username ?? "");
+        setShowProfileSetup(!profile?.display_name || !profile?.username);
         await loadFeed();
       }
     };
@@ -44,6 +51,10 @@ export default function HomePage() {
       setUserId(session?.user?.id ?? null);
       if (session?.user) {
         setEmail(session.user.email ?? "");
+        const { data: profile } = await client.from("profiles").select("display_name,username").eq("id", session.user.id).maybeSingle();
+        setProfileName(profile?.display_name ?? "");
+        setUsername(profile?.username ?? "");
+        setShowProfileSetup(!profile?.display_name || !profile?.username);
         await loadFeed();
       } else {
         setFeed([]);
@@ -98,6 +109,15 @@ export default function HomePage() {
     setUserId(null);
     setSent(false);
     setCode("");
+  }
+
+  async function saveProfile(e: React.FormEvent) {
+    e.preventDefault();
+    if (!userId || !profileName.trim() || !username.trim()) return;
+    const cleanUsername = username.trim().toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 30);
+    const { error } = await supabase().from("profiles").update({ display_name: profileName.trim(), username: cleanUsername }).eq("id", userId);
+    if (error) { setErrorMsg(error.message); return; }
+    setUsername(cleanUsername); setShowProfileSetup(false); setErrorMsg("");
   }
 
   async function createPost(e: React.FormEvent) {
@@ -184,6 +204,18 @@ export default function HomePage() {
           </div>
 
           <div className="p-4">
+            {showProfileSetup && userId && (
+              <form onSubmit={saveProfile} className="glass soft mb-4 rounded-2xl p-5">
+                <div className="text-xs font-semibold uppercase tracking-[.16em] text-violet-300">Welcome to Zenchat</div>
+                <h2 className="mt-2 text-xl font-semibold">Set up your profile</h2>
+                <p className="mt-1 text-xs text-zinc-500">Choose the name and username people will see.</p>
+                <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                  <input required value={profileName} onChange={e=>setProfileName(e.target.value)} placeholder="Display name" className="rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-xs outline-none focus:border-violet-400"/>
+                  <input required value={username} onChange={e=>setUsername(e.target.value.replace(/[^a-zA-Z0-9_]/g, "").slice(0,30))} placeholder="username" className="rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-xs outline-none focus:border-violet-400"/>
+                </div>
+                <button className="mt-3 rounded-xl bg-white px-4 py-3 text-xs font-semibold text-black">Continue</button>
+              </form>
+            )}
             <form onSubmit={createPost} className="glass soft rounded-2xl p-4">
               <div className="flex gap-3">
                 <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-gradient-to-br from-violet-500 to-cyan-400 font-bold">Z</div>
