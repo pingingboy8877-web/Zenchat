@@ -14,6 +14,7 @@ type FeedPost = {
   author_id: string;
   profiles: { display_name: string | null; username: string | null; avatar_url: string | null } | null;
   likes: { user_id: string }[];
+  comments: { id:string; content:string; user_id:string; created_at:string; profiles:{display_name:string|null;username:string|null}|null }[];
 };
 
 export default function HomePage() {
@@ -28,6 +29,10 @@ export default function HomePage() {
   const [profileName, setProfileName] = useState("");
   const [username, setUsername] = useState("");
   const [showProfileSetup, setShowProfileSetup] = useState(false);
+  const [commentDrafts,setCommentDrafts]=useState<Record<string,string>>({});
+  const [expandedComments,setExpandedComments]=useState<Record<string,boolean>>({});
+  const [following,setFollowing]=useState<string[]>([]);
+  const [view,setView]=useState<"home"|"profile">("home");
 
   useEffect(() => {
     const client = supabase();
@@ -71,11 +76,12 @@ export default function HomePage() {
     }
     const { data, error } = await supabase()
       .from("posts")
-      .select("id,content,created_at,author_id,profiles:author_id(display_name,username,avatar_url),likes(user_id)")
+      .select("id,content,created_at,author_id,profiles:author_id(display_name,username,avatar_url),likes(user_id),comments(id,content,user_id,created_at,profiles:user_id(display_name,username))")
       .order("created_at", { ascending: false })
       .limit(30);
 
     if (!error && data) setFeed(data as unknown as FeedPost[]);
+    if (userId) { const {data:f}=await supabase().from("follows").select("following_id").eq("follower_id",userId); setFollowing((f??[]).map((x:any)=>x.following_id)); }
   }
 
   async function otp(e: React.FormEvent) {
@@ -146,6 +152,10 @@ export default function HomePage() {
     await loadFeed();
   }
 
+  async function addComment(postId:string){ if(!userId)return; const content=(commentDrafts[postId]||"").trim(); if(!content)return; const {error}=await supabase().from("comments").insert({post_id:postId,user_id:userId,content}); if(error){setErrorMsg(error.message);return;} setCommentDrafts(d=>({...d,[postId]:""})); await loadFeed(); }
+
+  async function toggleFollow(targetId:string){ if(!userId||userId===targetId)return; if(following.includes(targetId)){await supabase().from("follows").delete().eq("follower_id",userId).eq("following_id",targetId);setFollowing(x=>x.filter(id=>id!==targetId));}else{const {error}=await supabase().from("follows").insert({follower_id:userId,following_id:targetId});if(error){setErrorMsg(error.message);return;}setFollowing(x=>[...x,targetId]);} }
+
   async function toggleLike(post: FeedPost) {
     if (!userId) return;
     const liked = post.likes.some((like) => like.user_id === userId);
@@ -169,7 +179,7 @@ export default function HomePage() {
           </div>
           <nav className="space-y-2">
             {[[Home, "Home"], [Compass, "Discover"], [MessageCircle, "Messages"], [Bell, "Notifications"], [Users, "Communities"], [UserRound, "Profile"]].map(([I, n]: any) => (
-              <button key={n} className="soft flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm text-zinc-300 hover:text-white">
+              <button key={n} onClick={()=>n==="Profile"&&setView("profile")} className="soft flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm text-zinc-300 hover:text-white">
                 <I size={18} />{n}
               </button>
             ))}
@@ -191,12 +201,12 @@ export default function HomePage() {
           <header className="sticky top-0 z-10 flex items-center justify-between border-b border-white/5 bg-[#07090d]/85 px-5 py-4 backdrop-blur-xl">
             <div>
               <div className="text-xs text-zinc-500">YOUR SPACE</div>
-              <h1 className="text-lg font-semibold">Home</h1>
+              <h1 className="text-lg font-semibold">{view==="profile"?"Profile":"Home"}</h1>
             </div>
             <button type="button" className="grid h-9 w-9 place-items-center rounded-full bg-white/5"><Search size={18} /></button>
           </header>
 
-          <div className="flex gap-3 overflow-x-auto border-b border-white/5 p-4 scrollbar">
+          {view==="profile" ? <div className="p-5"><div className="glass rounded-2xl p-6"><div className="grid h-20 w-20 place-items-center rounded-full bg-gradient-to-br from-violet-500 to-cyan-400 text-2xl font-bold">{(profileName[0]||"Z").toUpperCase()}</div><h2 className="mt-4 text-2xl font-semibold">{profileName||"Zenchat member"}</h2><p className="text-sm text-zinc-500">@{username||"member"}</p><div className="mt-5 grid grid-cols-3 gap-2 border-y border-white/5 py-4 text-center"><div><b>{feed.filter(p=>p.author_id===userId).length}</b><div className="text-[10px] text-zinc-600">Posts</div></div><div><b>{following.length}</b><div className="text-[10px] text-zinc-600">Following</div></div><div><b>—</b><div className="text-[10px] text-zinc-600">Followers</div></div></div></div></div> : <div className="flex gap-3 overflow-x-auto border-b border-white/5 p-4 scrollbar">
             {["Your story", "+ Add story", "Maya", "Daniel", "Aisha"].map((x, i) => (
               <div key={x} className="min-w-[76px] text-center text-xs text-zinc-400">
                 <div className={`mx-auto mb-2 grid h-14 w-14 place-items-center rounded-full border ${i === 1 ? "border-dashed border-zinc-600" : "border-[var(--accent)] bg-gradient-to-br from-violet-500/30 to-cyan-400/20"}`}>
@@ -205,6 +215,7 @@ export default function HomePage() {
                 {x}
               </div>
             ))}
+          </div>
           </div>
 
           <div className="p-4">
@@ -259,9 +270,10 @@ export default function HomePage() {
                     <button onClick={() => toggleLike(post)} className={`flex gap-2 hover:text-white ${liked ? "text-pink-400" : ""}`}>
                       <Heart size={17} fill={liked ? "currentColor" : "none"} />{post.likes.length}
                     </button>
-                    <button className="flex gap-2 hover:text-white"><MessageCircle size={17} />Comment</button>
+                    <button onClick={()=>setExpandedComments(x=>({...x,[post.id]:!x[post.id]}))} className="flex gap-2 hover:text-white"><MessageCircle size={17} />{post.comments.length}</button>
                     <button className="hover:text-white">↗ Share</button>
                   </div>
+                  {expandedComments[post.id]&&<div className="mt-4 border-t border-white/5 pt-4"><div className="space-y-2">{post.comments.slice(-5).map(c=><div key={c.id} className="text-xs"><b>{c.profiles?.display_name||"User"}</b><span className="ml-2 text-zinc-400">{c.content}</span></div>)}</div>{userId&&<form onSubmit={e=>{e.preventDefault();addComment(post.id)}} className="mt-3 flex gap-2"><input value={commentDrafts[post.id]||""} onChange={e=>setCommentDrafts(d=>({...d,[post.id]:e.target.value}))} placeholder="Write a comment..." className="min-w-0 flex-1 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs"/><button className="rounded-xl bg-white px-3 text-xs text-black">Send</button></form>}</div>}
                 </article>
               );
             })}
@@ -277,11 +289,11 @@ export default function HomePage() {
         <aside className="hidden w-[330px] p-5 xl:block">
           <div className="glass rounded-2xl p-4">
             <div className="mb-4 flex items-center justify-between"><b className="text-sm">People to follow</b><span className="text-xs text-[var(--accent)]">See all</span></div>
-            {["Aisha Cole", "Daniel King", "Maya Carter"].map((x) => (
+            {feed.filter(p=>p.author_id!==userId).slice(0,3).map((p:any) => ({id:p.author_id,name:p.profiles?.display_name||"Zenchat user",username:p.profiles?.username||"member"})).filter((x:any,i:number,a:any[])=>a.findIndex(y=>y.id===x.id)===i).map((x:any) => (
               <div className="mb-4 flex items-center gap-3" key={x}>
-                <div className="grid h-9 w-9 place-items-center rounded-full bg-white/10 text-xs">{x[0]}</div>
-                <div className="flex-1"><b className="text-xs">{x}</b><p className="text-[11px] text-zinc-600">@{x.toLowerCase().replace(" ", "")}</p></div>
-                <button className="rounded-full border border-white/10 px-3 py-1 text-[10px]">Follow</button>
+                <div className="grid h-9 w-9 place-items-center rounded-full bg-white/10 text-xs">{x.name[0]}</div>
+                <div className="flex-1"><b className="text-xs">{x.name}</b><p className="text-[11px] text-zinc-600">@{x.username}</p></div>
+                <button disabled={!userId} onClick={()=>toggleFollow(x.id)} className="rounded-full border border-white/10 px-3 py-1 text-[10px]">{following.includes(x.id)?"Following":"Follow"}</button>
               </div>
             ))}
           </div>
