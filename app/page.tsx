@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Bell, Compass, Heart, Home, Image, MessageCircle, Plus, Search, Send, Settings, UserRound, Users, Video, LogOut, Paperclip, Smile, Check, CheckCheck, ArrowLeft, MoreHorizontal } from "lucide-react";
+import { Bell, Compass, Heart, Home, Image, MessageCircle, Plus, Search, Send, Settings, UserRound, Users, Video, LogOut, Paperclip, Smile, Check, CheckCheck, ArrowLeft, MoreHorizontal, X } from "lucide-react";
 import { supabase } from "../lib/supabase";
 
 type Profile = { display_name:string|null; username:string|null; avatar_url?:string|null };
 type Comment = { id:string; content:string; user_id:string; created_at:string; profiles:Profile|null };
 type FeedPost = { id:string; content:string; created_at:string; author_id:string; profiles:Profile|null; likes:{user_id:string}[]; comments:Comment[] };
 type Conversation = { id:string; kind:string; title:string|null; avatar_url:string|null; other:Profile|null; otherId:string|null; lastMessage:string; lastAt:string|null; unread:boolean };
-type ChatMessage = { id:string; conversation_id:string; sender_id:string; content:string; attachment_path:string|null; attachment_type:string|null; created_at:string; edited_at:string|null; deleted_at:string|null; reactions:{message_id:string;user_id:string;reaction:string}[]; sender:Profile|null };
+type ChatMessage = { id:string; conversation_id:string; sender_id:string; content:string; attachment_path:string|null; attachment_type:string|null; created_at:string; edited_at:string|null; deleted_at:string|null; reactions:{message_id:string;user_id:string;reaction:string}[]; sender:Profile|null };\ntype Notification = { id:string; recipient_id:string; actor_id:string|null; type:string; post_id:string|null; comment_id:string|null; conversation_id:string|null; message_id:string|null; read_at:string|null; created_at:string; actor:Profile|null };
 
 export default function HomePage() {
   const [email,setEmail]=useState(""); const [code,setCode]=useState(""); const [sent,setSent]=useState(false);
@@ -16,10 +16,10 @@ export default function HomePage() {
   const [feed,setFeed]=useState<FeedPost[]>([]); const [postText,setPostText]=useState(""); const [profileName,setProfileName]=useState(""); const [username,setUsername]=useState("");
   const [showProfileSetup,setShowProfileSetup]=useState(false); const [commentDrafts,setCommentDrafts]=useState<Record<string,string>>({});
   const [expandedComments,setExpandedComments]=useState<Record<string,boolean>>({}); const [following,setFollowing]=useState<string[]>([]);
-  const [view,setView]=useState<"home"|"profile"|"messages">("home");
+  const [view,setView]=useState<"home"|"profile"|"messages"|"notifications">("home");
   const [conversations,setConversations]=useState<Conversation[]>([]); const [activeConversation,setActiveConversation]=useState<string|null>(null);
   const [messages,setMessages]=useState<ChatMessage[]>([]); const [messageText,setMessageText]=useState(""); const [chatLoading,setChatLoading]=useState(false);
-  const [typing,setTyping]=useState(false); const [remoteTyping,setRemoteTyping]=useState(false); const [presence,setPresence]=useState<Record<string,boolean>>({}); const [mobileChat,setMobileChat]=useState(false);
+  const [typing,setTyping]=useState(false); const [remoteTyping,setRemoteTyping]=useState(false); const [presence,setPresence]=useState<Record<string,boolean>>({}); const [mobileChat,setMobileChat]=useState(false);\n  const [notifications,setNotifications]=useState<Notification[]>([]); const [notificationUnread,setNotificationUnread]=useState(0);
 
   useEffect(()=>{ const client=supabase(); let mounted=true;
     const load=async()=>{ const {data}=await client.auth.getUser(); if(!mounted)return; if(data.user){ await hydrateUser(data.user.id,data.user.email??""); } };
@@ -30,7 +30,7 @@ export default function HomePage() {
 
   async function hydrateUser(id:string,mail:string){ setUserId(id);setEmail(mail);
     const c=supabase(); const {data:profile}=await c.from("profiles").select("display_name,username,avatar_url").eq("id",id).maybeSingle();
-    setProfileName(profile?.display_name??"");setUsername(profile?.username??"");setShowProfileSetup(!profile?.display_name||!profile?.username); await loadFeed(id); await loadConversations(id);
+    setProfileName(profile?.display_name??"");setUsername(profile?.username??"");setShowProfileSetup(!profile?.display_name||!profile?.username); await loadFeed(id); await loadConversations(id); await loadNotifications(id);
   }
   async function loadFeed(id?:string){ const uid=id??userId??(await supabase().auth.getUser()).data.user?.id; if(!uid)return;
     const {data}=await supabase().from("posts").select("id,content,created_at,author_id,profiles:author_id(display_name,username,avatar_url),likes(user_id),comments(id,content,user_id,created_at,profiles:user_id(display_name,username))").order("created_at",{ascending:false}).limit(30);
@@ -46,6 +46,27 @@ export default function HomePage() {
       rows.push({id:x.id,kind:x.kind,title:x.title,avatar_url:x.avatar_url,other,otherId,lastMessage:last?.content??"Start the conversation",lastAt:last?.created_at??x.updated_at,unread:false});
     } setConversations(rows);
   }
+  async function loadNotifications(uid?:string){
+    const id=uid??userId;if(!id)return;
+    const {data,error}=await supabase().from("notifications").select("id,recipient_id,actor_id,type,post_id,comment_id,conversation_id,message_id,read_at,created_at,actor:actor_id(display_name,username,avatar_url)").eq("recipient_id",id).order("created_at",{ascending:false}).limit(50);
+    if(error){setErrorMsg(error.message);return;}
+    setNotifications((data??[]) as unknown as Notification[]);
+    setNotificationUnread((data??[]).filter((n:any)=>!n.read_at).length);
+  }
+  async function markNotificationRead(id:string){
+    if(!userId)return;
+    await supabase().from("notifications").update({read_at:new Date().toISOString()}).eq("id",id).eq("recipient_id",userId);
+    setNotifications(prev=>prev.map(n=>n.id===id?{...n,read_at:new Date().toISOString()}:n));
+    setNotificationUnread(n=>Math.max(0,n-1));
+  }
+  async function markAllNotificationsRead(){
+    if(!userId||notificationUnread===0)return;
+    const now=new Date().toISOString();
+    await supabase().from("notifications").update({read_at:now}).eq("recipient_id",userId).is("read_at",null);
+    setNotifications(prev=>prev.map(n=>({...n,read_at:n.read_at??now})));
+    setNotificationUnread(0);
+  }
+
   async function openConversation(id:string){ setActiveConversation(id);setMobileChat(true);await loadMessages(id);await markRead(id); }
   async function loadMessages(id:string){ const c=supabase(); const {data,error}=await c.from("messages").select("id,conversation_id,sender_id,content,attachment_path,attachment_type,created_at,edited_at,deleted_at,reactions:message_reactions(message_id,user_id,reaction),sender:sender_id(display_name,username,avatar_url)").eq("conversation_id",id).order("created_at",{ascending:true}).limit(200);if(error){setErrorMsg(error.message);return;}setMessages((data??[]) as unknown as ChatMessage[]); }
   async function markRead(id:string){if(!userId)return;await supabase().from("conversation_members").update({last_read_at:new Date().toISOString()}).eq("conversation_id",id).eq("user_id",userId);}
@@ -54,6 +75,17 @@ export default function HomePage() {
     const {data:conv,error}=await c.from("conversations").insert({kind:"direct",created_by:userId}).select("id").single();if(error||!conv){setErrorMsg(error?.message??"Could not create conversation");return;}
     const {error:e1}=await c.from("conversation_members").insert([{conversation_id:conv.id,user_id:userId,role:"admin"},{conversation_id:conv.id,user_id:targetId,role:"member"}]);if(e1){setErrorMsg(e1.message);return;}await loadConversations(userId);await openConversation(conv.id);
   }
+  useEffect(()=>{if(!userId)return;const c=supabase();
+    const channel=c.channel("notifications:"+userId)
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"notifications",filter:"recipient_id=eq."+userId},async(payload)=>{
+        const n=payload.new as any;
+        const {data:full}=await c.from("notifications").select("id,recipient_id,actor_id,type,post_id,comment_id,conversation_id,message_id,read_at,created_at,actor:actor_id(display_name,username,avatar_url)").eq("id",n.id).maybeSingle();
+        if(full){setNotifications(prev=>prev.some(x=>x.id===n.id)?prev:[full as unknown as Notification,...prev]);setNotificationUnread(x=>x+1);}
+      })
+      .subscribe();
+    return()=>{c.removeChannel(channel);};
+  },[userId]);
+
   useEffect(()=>{if(!activeConversation||!userId)return;const c=supabase();
     const channel=c.channel("chat:"+activeConversation)
       .on("postgres_changes",{event:"INSERT",schema:"public",table:"messages",filter:"conversation_id=eq."+activeConversation},async(payload)=>{const m=payload.new as any;const {data:full}=await c.from("messages").select("id,conversation_id,sender_id,content,attachment_path,attachment_type,created_at,edited_at,deleted_at,reactions:message_reactions(message_id,user_id,reaction),sender:sender_id(display_name,username,avatar_url)").eq("id",m.id).single();if(full)setMessages(prev=>prev.some(x=>x.id===m.id)?prev:[...prev,full as unknown as ChatMessage]);await markRead(activeConversation);})
@@ -92,13 +124,22 @@ export default function HomePage() {
 
   return <main className="min-h-screen"><div className="mx-auto flex min-h-screen max-w-[1450px]">
     <aside className="hidden w-[250px] flex-col border-r border-white/5 p-5 lg:flex"><div className="mb-10 flex items-center gap-2 text-xl font-bold"><span className="grid h-9 w-9 place-items-center rounded-xl bg-[var(--accent)]">Z</span>zenchat</div>
-      <nav className="space-y-2">{[[Home,"Home"],[Compass,"Discover"],[MessageCircle,"Messages"],[Bell,"Notifications"],[Users,"Communities"],[UserRound,"Profile"]].map(([I,n]:any)=><button key={n} onClick={()=>{if(n==="Profile")setView("profile");if(n==="Home")setView("home");if(n==="Messages"){setView("messages");setMobileChat(false);}}} className={"soft flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm "+((n==="Messages"&&view==="messages")||(n==="Profile"&&view==="profile")||(n==="Home"&&view==="home")?"bg-white/5 text-white":"text-zinc-300 hover:text-white")}><I size={18}/>{n}</button>)}</nav>
+      <nav className="space-y-2">{[[Home,"Home"],[Compass,"Discover"],[MessageCircle,"Messages"],[Bell,"Notifications"],[Users,"Communities"],[UserRound,"Profile"]].map(([I,n]:any)=><button key={n} onClick={()=>{if(n==="Profile")setView("profile");if(n==="Home")setView("home");if(n==="Messages"){setView("messages");setMobileChat(false);}if(n==="Notifications"){setView("notifications");loadNotifications();}}} className={"soft flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm "+((n==="Messages"&&view==="messages")||(n==="Profile"&&view==="profile")||(n==="Home"&&view==="home")?"bg-white/5 text-white":"text-zinc-300 hover:text-white")}><I size={18}/>{n}</button>)}</nav>
       <div className="mt-auto">{userId?<button onClick={signOut} className="flex items-center gap-3 px-4 py-3 text-sm text-zinc-500 hover:text-white"><LogOut size={18}/>Sign out</button>:<button className="flex items-center gap-3 px-4 py-3 text-sm text-zinc-500"><Settings size={18}/>Settings</button>}</div>
     </aside>
     <section className="w-full max-w-[1050px] border-r border-white/5">
-      <header className="sticky top-0 z-20 flex items-center justify-between border-b border-white/5 bg-[#07090d]/85 px-5 py-4 backdrop-blur-xl"><div><div className="text-[10px] uppercase tracking-[.18em] text-zinc-500">{view==="messages"?"PRIVATE NETWORK":"YOUR SPACE"}</div><h1 className="text-lg font-semibold">{view==="profile"?"Profile":view==="messages"?"Messages":"Home"}</h1></div><button className="grid h-9 w-9 place-items-center rounded-full bg-white/5"><Search size={18}/></button></header>
+      <header className="sticky top-0 z-20 flex items-center justify-between border-b border-white/5 bg-[#07090d]/85 px-5 py-4 backdrop-blur-xl"><div><div className="text-[10px] uppercase tracking-[.18em] text-zinc-500">{view==="messages"?"PRIVATE NETWORK":"YOUR SPACE"}</div><h1 className="text-lg font-semibold">{view==="profile"?"Profile":view==="messages"?"Messages":view==="notifications"?"Notifications":"Home"}</h1></div><button className="grid h-9 w-9 place-items-center rounded-full bg-white/5"><Search size={18}/></button></header>
 
-      {view==="messages" ? <div className="flex h-[calc(100vh-73px)] min-h-[620px]">
+      {view==="notifications" ? <div className="p-4 sm:p-6">
+        <div className="glass rounded-2xl overflow-hidden">
+          <div className="flex items-center justify-between border-b border-white/5 px-5 py-4">
+            <div><b className="text-sm">Activity</b><p className="mt-1 text-[10px] text-zinc-600">{notificationUnread ? notificationUnread+" unread":"All caught up"}</p></div>
+            <button onClick={markAllNotificationsRead} disabled={!notificationUnread} className="text-[10px] text-violet-300 disabled:opacity-30">Mark all read</button>
+          </div>
+          {!notifications.length?<div className="p-12 text-center"><Bell className="mx-auto text-zinc-700" size={30}/><p className="mt-3 text-sm text-zinc-400">No notifications yet</p><p className="mt-1 text-[11px] text-zinc-600">Likes, comments, follows and messages will appear here.</p></div>:
+          <div>{notifications.map(n=>{const name=n.actor?.display_name||n.actor?.username||"Someone";const text=n.type==="like"?"liked your post":n.type==="comment"?"commented on your post":n.type==="follow"?"started following you":"sent you a message";return <button key={n.id} onClick={()=>markNotificationRead(n.id)} className={"flex w-full items-center gap-3 border-b border-white/5 px-5 py-4 text-left transition "+(n.read_at?"":"bg-violet-500/[0.06]")}><div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-gradient-to-br from-violet-500/20 to-cyan-400/20 text-xs font-semibold">{name[0]?.toUpperCase()||"Z"}</div><div className="min-w-0 flex-1"><p className="text-xs text-zinc-300"><b>{name}</b> <span className="text-zinc-500">{text}</span></p><p className="mt-1 text-[10px] text-zinc-700">{new Date(n.created_at).toLocaleString()}</p></div>{!n.read_at&&<span className="h-2 w-2 rounded-full bg-violet-400"/>}</button>})}</div>}
+        </div>
+      </div> : {view==="messages" ? <div className="flex h-[calc(100vh-73px)] min-h-[620px]">
         <div className={(mobileChat?"hidden":"flex")+" w-full flex-col border-r border-white/5 md:flex md:w-[310px]"}>
           <div className="flex items-center justify-between px-4 py-4"><div><b className="text-sm">Chats</b><p className="text-[10px] text-zinc-600">{conversations.length} conversations</p></div><button className="grid h-8 w-8 place-items-center rounded-lg bg-white/5"><Plus size={16}/></button></div>
           <div className="px-3 pb-3"><div className="flex items-center gap-2 rounded-xl border border-white/5 bg-black/20 px-3 py-2"><Search size={14} className="text-zinc-600"/><input placeholder="Search conversations" className="w-full bg-transparent text-xs outline-none"/></div></div>
@@ -117,7 +158,7 @@ export default function HomePage() {
           <form onSubmit={createPost} className="glass soft rounded-2xl p-4"><div className="flex gap-3"><div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-gradient-to-br from-violet-500 to-cyan-400 font-bold">Z</div><div className="flex-1"><textarea value={postText} onChange={e=>setPostText(e.target.value)} disabled={!userId} placeholder={userId?"Share something meaningful…":"Sign in to start posting…"} className="min-h-16 w-full resize-none bg-transparent text-sm outline-none"/><div className="mt-3 flex items-center justify-between border-t border-white/5 pt-3"><div className="flex gap-1"><button type="button" className="rounded-lg p-2 text-zinc-500"><Image size={18}/></button><button type="button" className="rounded-lg p-2 text-zinc-500"><Video size={18}/></button></div><button disabled={!userId||!postText.trim()} className="rounded-full bg-white px-4 py-2 text-xs font-semibold text-black disabled:opacity-40">Post</button></div></div></div></form>
           {feed.map(post=>{const liked=!!userId&&post.likes.some(l=>l.user_id===userId);const name=post.profiles?.display_name||post.profiles?.username||"Zenchat user";return <article key={post.id} className="glass soft mt-4 rounded-2xl p-5"><div className="flex items-center gap-3"><div className="grid h-10 w-10 place-items-center rounded-full bg-orange-400/20">{name[0]}</div><div><b className="text-sm">{name}</b><div className="text-xs text-zinc-600">@{post.profiles?.username||"member"} · {new Date(post.created_at).toLocaleString()}</div></div></div><p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-zinc-300">{post.content}</p><div className="mt-4 flex justify-between border-t border-white/5 pt-4 text-xs text-zinc-500"><button onClick={()=>toggleLike(post)} className={"flex gap-2 "+(liked?"text-pink-400":"")}><Heart size={17} fill={liked?"currentColor":"none"}/>{post.likes.length}</button><button onClick={()=>setExpandedComments(x=>({...x,[post.id]:!x[post.id]}))} className="flex gap-2"><MessageCircle size={17}/>{post.comments.length}</button><button className="hover:text-white">↗ Share</button></div>{expandedComments[post.id]&&<div className="mt-4 border-t border-white/5 pt-4">{post.comments.slice(-5).map(c=><div key={c.id} className="text-xs mb-2"><b>{c.profiles?.display_name||"User"}</b><span className="ml-2 text-zinc-400">{c.content}</span></div>)}{userId&&<form onSubmit={e=>{e.preventDefault();addComment(post.id)}} className="mt-3 flex gap-2"><input value={commentDrafts[post.id]||""} onChange={e=>setCommentDrafts(d=>({...d,[post.id]:e.target.value}))} placeholder="Write a comment…" className="min-w-0 flex-1 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs"/><button className="rounded-xl bg-white px-3 text-xs text-black">Send</button></form>}</div>}</article>})}
         </div></>}</section>
-    <aside className="hidden w-[330px] p-5 xl:block">{view==="messages"?<div className="glass rounded-2xl p-4"><b className="text-sm">Start a conversation</b><p className="mt-2 text-xs leading-5 text-zinc-600">Message people directly from Zenchat.</p>{people.map(p=><div key={p.id} className="mt-4 flex items-center gap-3"><div className="grid h-9 w-9 place-items-center rounded-full bg-white/10 text-xs">{p.name[0]}</div><div className="min-w-0 flex-1"><b className="block truncate text-xs">{p.name}</b><p className="text-[11px] text-zinc-600">@{p.username}</p></div><button onClick={()=>startConversation(p.id)} disabled={!userId} className="rounded-full bg-white px-3 py-1 text-[10px] text-black">Chat</button></div>)}</div>:<><div className="glass rounded-2xl p-4"><div className="mb-4 flex items-center justify-between"><b className="text-sm">People to follow</b><span className="text-xs text-[var(--accent)]">See all</span></div>{people.map(x=><div className="mb-4 flex items-center gap-3" key={x.id}><div className="grid h-9 w-9 place-items-center rounded-full bg-white/10 text-xs">{x.name[0]}</div><div className="flex-1"><b className="text-xs">{x.name}</b><p className="text-[11px] text-zinc-600">@{x.username}</p></div><button disabled={!userId} onClick={()=>toggleFollow(x.id)} className="rounded-full border border-white/10 px-3 py-1 text-[10px]">{following.includes(x.id)?"Following":"Follow"}</button></div>)}</div>
+    <aside className="hidden w-[330px] p-5 xl:block">{view==="notifications"?<div className="glass rounded-2xl p-4"><b className="text-sm">Notifications</b><p className="mt-2 text-xs leading-5 text-zinc-600">{notificationUnread ? notificationUnread+" new activity":"You are all caught up."}</p></div>:view==="messages"?<div className="glass rounded-2xl p-4"><b className="text-sm">Start a conversation</b><p className="mt-2 text-xs leading-5 text-zinc-600">Message people directly from Zenchat.</p>{people.map(p=><div key={p.id} className="mt-4 flex items-center gap-3"><div className="grid h-9 w-9 place-items-center rounded-full bg-white/10 text-xs">{p.name[0]}</div><div className="min-w-0 flex-1"><b className="block truncate text-xs">{p.name}</b><p className="text-[11px] text-zinc-600">@{p.username}</p></div><button onClick={()=>startConversation(p.id)} disabled={!userId} className="rounded-full bg-white px-3 py-1 text-[10px] text-black">Chat</button></div>)}</div>:<><div className="glass rounded-2xl p-4"><div className="mb-4 flex items-center justify-between"><b className="text-sm">People to follow</b><span className="text-xs text-[var(--accent)]">See all</span></div>{people.map(x=><div className="mb-4 flex items-center gap-3" key={x.id}><div className="grid h-9 w-9 place-items-center rounded-full bg-white/10 text-xs">{x.name[0]}</div><div className="flex-1"><b className="text-xs">{x.name}</b><p className="text-[11px] text-zinc-600">@{x.username}</p></div><button disabled={!userId} onClick={()=>toggleFollow(x.id)} className="rounded-full border border-white/10 px-3 py-1 text-[10px]">{following.includes(x.id)?"Following":"Follow"}</button></div>)}</div>
       {!userId&&<div className="mt-4 glass rounded-2xl p-4"><b className="text-sm">Sign in to Zenchat</b><p className="mt-2 text-xs leading-5 text-zinc-500">Use your email. We’ll send a one-time verification code.</p><form onSubmit={sent?verify:otp} className="mt-4 space-y-2"><input required type="email" value={email} disabled={sent} onChange={e=>setEmail(e.target.value)} placeholder="you@example.com" className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-xs"/>{sent&&<input required inputMode="numeric" pattern="[0-9]{6}" maxLength={6} value={code} onChange={e=>setCode(e.target.value.replace(/\D/g,"").slice(0,6))} placeholder="6-digit code" className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-center text-sm tracking-[.4em]"/>}<button disabled={loading} className="flex w-full items-center justify-center gap-2 rounded-xl bg-white py-3 text-xs font-semibold text-black">{loading?(sent?"Verifying…":"Sending…"):(sent?"Verify OTP":"Send OTP")}<Send size={14}/></button></form>{errorMsg&&<p className="mt-3 text-[11px] text-red-400">{errorMsg}</p>}</div>}</>}</aside>
-  </div><div className="fixed bottom-4 left-1/2 flex -translate-x-1/2 gap-1 rounded-full border border-white/10 bg-[#10141c]/90 p-1 shadow-2xl backdrop-blur-xl lg:hidden">{[[Home,"Home"],[Compass,"Discover"],[Plus,"Create"],[MessageCircle,"Chat"],[UserRound,"Me"]].map(([I,n]:any)=><button key={n} onClick={()=>{if(n==="Chat"){setView("messages");setMobileChat(false)}if(n==="Home")setView("home");if(n==="Me")setView("profile")}} className="grid h-12 w-14 place-items-center text-zinc-400"><I size={19}/></button>)}</div>{errorMsg&&userId&&<div className="fixed bottom-20 left-1/2 z-50 -translate-x-1/2 rounded-xl border border-red-500/20 bg-[#151019] px-4 py-3 text-xs text-red-300">{errorMsg}</div>}</main>;
+  </div><div className="fixed bottom-4 left-1/2 flex -translate-x-1/2 gap-1 rounded-full border border-white/10 bg-[#10141c]/90 p-1 shadow-2xl backdrop-blur-xl lg:hidden">{[[Home,"Home"],[Compass,"Discover"],[Plus,"Create"],[MessageCircle,"Chat"],[Bell,"Alerts"],[UserRound,"Me"]].map(([I,n]:any)=><button key={n} onClick={()=>{if(n==="Chat"){setView("messages");setMobileChat(false)}if(n==="Home")setView("home");if(n==="Alerts"){setView("notifications");loadNotifications()}if(n==="Me")setView("profile")}} className="grid h-12 w-14 place-items-center text-zinc-400"><I size={19}/></button>)}</div>{errorMsg&&userId&&<div className="fixed bottom-20 left-1/2 z-50 -translate-x-1/2 rounded-xl border border-red-500/20 bg-[#151019] px-4 py-3 text-xs text-red-300">{errorMsg}</div>}</main>;
 }
