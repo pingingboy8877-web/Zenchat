@@ -9,18 +9,22 @@ type Comment = { id:string; content:string; user_id:string; created_at:string; p
 type FeedPost = { id:string; content:string; created_at:string; author_id:string; profiles:Profile|null; likes:{user_id:string}[]; comments:Comment[] };
 type Conversation = { id:string; kind:string; title:string|null; avatar_url:string|null; other:Profile|null; otherId:string|null; lastMessage:string; lastAt:string|null; unread:boolean };
 type ChatMessage = { id:string; conversation_id:string; sender_id:string; content:string; attachment_path:string|null; attachment_type:string|null; created_at:string; edited_at:string|null; deleted_at:string|null; reactions:{message_id:string;user_id:string;reaction:string}[]; sender:Profile|null };
-type Notification = { id:string; recipient_id:string; actor_id:string|null; type:string; post_id:string|null; comment_id:string|null; conversation_id:string|null; message_id:string|null; read_at:string|null; created_at:string; actor:Profile|null };\ntype Story = { id:string; author_id:string; media_path:string|null; media_type:string|null; text_content:string|null; expires_at:string; created_at:string; author:Profile|null; viewed:boolean };\ntype Community = { id:string; name:string; slug:string; description:string; cover_url:string|null; created_by:string; created_at:string; memberCount:number; joined:boolean };
+type Notification = { id:string; recipient_id:string; actor_id:string|null; type:string; post_id:string|null; comment_id:string|null; conversation_id:string|null; message_id:string|null; read_at:string|null; created_at:string; actor:Profile|null };
+type Story = { id:string; author_id:string; media_path:string|null; media_type:string|null; text_content:string|null; expires_at:string; created_at:string; author:Profile|null; viewed:boolean };
+type Community = { id:string; name:string; slug:string; description:string; cover_url:string|null; created_by:string; created_at:string; memberCount:number; joined:boolean };
 
 export default function HomePage() {
-  const [email,setEmail]=useState(""); const [code,setCode]=useState(""); const [sent,setSent]=useState(false);
+  const [email,setEmail]=useState(""); const [code,setCode]=useState(""); const [sent,setSent]=useState(false); const [authMode,setAuthMode]=useState<"signin"|"signup">("signin");
   const [loading,setLoading]=useState(false); const [errorMsg,setErrorMsg]=useState(""); const [userId,setUserId]=useState<string|null>(null);
   const [feed,setFeed]=useState<FeedPost[]>([]); const [postText,setPostText]=useState(""); const [profileName,setProfileName]=useState(""); const [username,setUsername]=useState("");
   const [showProfileSetup,setShowProfileSetup]=useState(false); const [commentDrafts,setCommentDrafts]=useState<Record<string,string>>({});
   const [expandedComments,setExpandedComments]=useState<Record<string,boolean>>({}); const [following,setFollowing]=useState<string[]>([]);
-  const [view,setView]=useState<"home"|"discover"|"profile"|"messages"|"notifications"|"communities">("home");\n  const [stories,setStories]=useState<Story[]>([]); const [communities,setCommunities]=useState<Community[]>([]); const [discoverQuery,setDiscoverQuery]=useState(""); const [communityQuery,setCommunityQuery]=useState(""); const [storyComposer,setStoryComposer]=useState(false); const [storyText,setStoryText]=useState(""); const [selectedStory,setSelectedStory]=useState<Story|null>(null);
+  const [view,setView]=useState<"home"|"discover"|"profile"|"messages"|"notifications"|"communities">("home");
+  const [stories,setStories]=useState<Story[]>([]); const [communities,setCommunities]=useState<Community[]>([]); const [discoverQuery,setDiscoverQuery]=useState(""); const [communityQuery,setCommunityQuery]=useState(""); const [storyComposer,setStoryComposer]=useState(false); const [storyText,setStoryText]=useState(""); const [selectedStory,setSelectedStory]=useState<Story|null>(null);
   const [conversations,setConversations]=useState<Conversation[]>([]); const [activeConversation,setActiveConversation]=useState<string|null>(null);
   const [messages,setMessages]=useState<ChatMessage[]>([]); const [messageText,setMessageText]=useState(""); const [chatLoading,setChatLoading]=useState(false);
-  const [typing,setTyping]=useState(false); const [remoteTyping,setRemoteTyping]=useState(false); const [presence,setPresence]=useState<Record<string,boolean>>({}); const [mobileChat,setMobileChat]=useState(false);\n  const [notifications,setNotifications]=useState<Notification[]>([]); const [notificationUnread,setNotificationUnread]=useState(0);
+  const [typing,setTyping]=useState(false); const [remoteTyping,setRemoteTyping]=useState(false); const [presence,setPresence]=useState<Record<string,boolean>>({}); const [mobileChat,setMobileChat]=useState(false);
+  const [notifications,setNotifications]=useState<Notification[]>([]); const [notificationUnread,setNotificationUnread]=useState(0);
 
   useEffect(()=>{ const client=supabase(); let mounted=true;
     const load=async()=>{ const {data}=await client.auth.getUser(); if(!mounted)return; if(data.user){ await hydrateUser(data.user.id,data.user.email??""); } };
@@ -152,6 +156,44 @@ export default function HomePage() {
   async function toggleLike(post:FeedPost){if(!userId)return;const liked=post.likes.some(l=>l.user_id===userId);if(liked)await supabase().from("likes").delete().eq("post_id",post.id).eq("user_id",userId);else await supabase().from("likes").insert({post_id:post.id,user_id:userId});await loadFeed(userId);}
 
   const active=conversations.find(c=>c.id===activeConversation); const filteredCommunities=communities.filter(c=>(c.name+" "+c.description).toLowerCase().includes(communityQuery.toLowerCase())); const filteredDiscover=feed.filter(p=>{const q=discoverQuery.toLowerCase();return !q||p.content.toLowerCase().includes(q)||(p.profiles?.display_name||"").toLowerCase().includes(q)||(p.profiles?.username||"").toLowerCase().includes(q);}); const people=useMemo(()=>feed.filter(p=>p.author_id!==userId).map(p=>({id:p.author_id,name:p.profiles?.display_name||"Zenchat user",username:p.profiles?.username||"member"})).filter((x,i,a)=>a.findIndex(y=>y.id===x.id)===i).slice(0,4),[feed,userId]);
+  if(!userId) return (
+    <main className="min-h-screen bg-[#000] text-white selection:bg-white selection:text-black">
+      <div className="grid min-h-screen lg:grid-cols-[1.15fr_.85fr]">
+        <section className="relative hidden overflow-hidden lg:flex lg:items-center lg:justify-center border-r border-white/10">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_35%_35%,rgba(124,58,237,.22),transparent_38%),radial-gradient(circle_at_70%_70%,rgba(34,211,238,.12),transparent_34%)]"/>
+          <div className="relative z-10 max-w-xl px-16">
+            <div className="mb-10 grid h-16 w-16 place-items-center rounded-full bg-white text-black text-3xl font-black">z</div>
+            <h1 className="text-6xl font-black leading-[.95] tracking-[-.06em]">Connect with<br/>what matters.</h1>
+            <p className="mt-7 max-w-md text-sm leading-6 text-zinc-500">A real-time social space for people, ideas, conversations and communities.</p>
+            <div className="mt-10 grid grid-cols-3 gap-3 text-[10px] uppercase tracking-[.16em] text-zinc-600"><span>People</span><span>Stories</span><span>Communities</span></div>
+          </div>
+        </section>
+        <section className="flex min-h-screen items-center px-6 py-10 sm:px-12 lg:px-20">
+          <div className="mx-auto w-full max-w-[430px]">
+            <div className="mb-12 lg:hidden grid h-12 w-12 place-items-center rounded-full bg-white text-black text-2xl font-black">z</div>
+            <p className="text-[11px] font-semibold uppercase tracking-[.22em] text-zinc-600">ZENCHAT</p>
+            <h2 className="mt-3 text-4xl font-bold tracking-[-.04em]">{authMode==="signin"?"Welcome back.":"Create your account."}</h2>
+            <p className="mt-3 text-sm text-zinc-500">{authMode==="signin"?"Sign in with your email and we’ll send a secure 6-digit code.":"Create your Zenchat account with your email. We’ll send a secure 6-digit code."}</p>
+            <div className="mt-9 rounded-3xl border border-white/10 bg-[#080808] p-6 shadow-2xl">
+              <div className="mb-6 grid grid-cols-2 rounded-xl bg-white/[.04] p-1">
+                <button type="button" onClick={()=>setAuthMode("signin")} className={"rounded-lg py-2.5 text-xs font-semibold "+(authMode==="signin"?"bg-white text-black":"text-zinc-500")}>Sign in</button>
+                <button type="button" onClick={()=>setAuthMode("signup")} className={"rounded-lg py-2.5 text-xs font-semibold "+(authMode==="signup"?"bg-white text-black":"text-zinc-500")}>Sign up</button>
+              </div>
+              <form onSubmit={sent?verify:otp} className="space-y-3">
+                <label className="block text-[11px] font-medium text-zinc-400">Email address</label>
+                <input required type="email" value={email} disabled={sent} onChange={e=>setEmail(e.target.value)} placeholder="name@example.com" className="h-12 w-full rounded-xl border border-white/10 bg-white/[.03] px-4 text-sm outline-none transition focus:border-white/30"/>
+                {sent&&<><label className="block pt-2 text-[11px] font-medium text-zinc-400">Verification code</label><input required autoFocus inputMode="numeric" pattern="[0-9]{6}" maxLength={6} value={code} onChange={e=>setCode(e.target.value.replace(/\D/g,"").slice(0,6))} placeholder="000000" className="h-14 w-full rounded-xl border border-white/10 bg-white/[.03] px-4 text-center text-xl tracking-[.55em] outline-none focus:border-white/30"/><button type="button" onClick={()=>{setSent(false);setCode("")}} className="text-[11px] text-zinc-500 hover:text-white">Use a different email</button></>}
+                <button disabled={loading} className="h-12 w-full rounded-xl bg-white text-sm font-bold text-black transition hover:bg-zinc-200 disabled:opacity-50">{loading?(sent?"Verifying…":"Sending code…"):(sent?"Verify and continue":"Continue with email")}</button>
+              </form>
+              {errorMsg&&<p className="mt-4 rounded-xl border border-red-500/20 bg-red-500/5 px-3 py-2 text-xs text-red-300">{errorMsg}</p>}
+              <p className="mt-5 text-[10px] leading-5 text-zinc-600">By continuing, you agree to Zenchat’s Terms and Privacy Policy. No password required.</p>
+            </div>
+            <div className="mt-7 flex items-center gap-3 text-[10px] text-zinc-700"><span className="h-px flex-1 bg-white/5"/>SECURE EMAIL OTP<span className="h-px flex-1 bg-white/5"/></div>
+          </div>
+        </section>
+      </div>
+    </main>
+  );
 
   return <main className="min-h-screen"><div className="mx-auto flex min-h-screen max-w-[1450px]">
     <aside className="hidden w-[250px] flex-col border-r border-white/5 p-5 lg:flex"><div className="mb-10 flex items-center gap-2 text-xl font-bold"><span className="grid h-9 w-9 place-items-center rounded-xl bg-[var(--accent)]">Z</span>zenchat</div>
