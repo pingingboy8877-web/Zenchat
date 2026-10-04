@@ -205,4 +205,43 @@ export default function HomePage() {
     <aside className="hidden w-[330px] p-5 xl:block">{view==="notifications"?<div className="glass rounded-2xl p-4"><b className="text-sm">Notifications</b><p className="mt-2 text-xs leading-5 text-zinc-600">{notificationUnread ? notificationUnread+" new activity":"You are all caught up."}</p></div>:view==="messages"?<div className="glass rounded-2xl p-4"><b className="text-sm">Start a conversation</b><p className="mt-2 text-xs leading-5 text-zinc-600">Message people directly from Zenchat.</p>{people.map(p=><div key={p.id} className="mt-4 flex items-center gap-3"><div className="grid h-9 w-9 place-items-center rounded-full bg-white/10 text-xs">{p.name[0]}</div><div className="min-w-0 flex-1"><b className="block truncate text-xs">{p.name}</b><p className="text-[11px] text-zinc-600">@{p.username}</p></div><button onClick={()=>startConversation(p.id)} disabled={!userId} className="rounded-full bg-white px-3 py-1 text-[10px] text-black">Chat</button></div>)}</div>:<><div className="glass rounded-2xl p-4"><div className="mb-4 flex items-center justify-between"><b className="text-sm">People to follow</b><span className="text-xs text-[var(--accent)]">See all</span></div>{people.map(x=><div className="mb-4 flex items-center gap-3" key={x.id}><div className="grid h-9 w-9 place-items-center rounded-full bg-white/10 text-xs">{x.name[0]}</div><div className="flex-1"><b className="text-xs">{x.name}</b><p className="text-[11px] text-zinc-600">@{x.username}</p></div><button disabled={!userId} onClick={()=>toggleFollow(x.id)} className="rounded-full border border-white/10 px-3 py-1 text-[10px]">{following.includes(x.id)?"Following":"Follow"}</button></div>)}</div>
       {!userId&&<div className="mt-4 glass rounded-2xl p-4"><b className="text-sm">Sign in to Zenchat</b><p className="mt-2 text-xs leading-5 text-zinc-500">Use your email. We’ll send a one-time verification code.</p><form onSubmit={sent?verify:otp} className="mt-4 space-y-2"><input required type="email" value={email} disabled={sent} onChange={e=>setEmail(e.target.value)} placeholder="you@example.com" className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-xs"/>{sent&&<input required inputMode="numeric" pattern="[0-9]{6}" maxLength={6} value={code} onChange={e=>setCode(e.target.value.replace(/\D/g,"").slice(0,6))} placeholder="6-digit code" className="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-center text-sm tracking-[.4em]"/>}<button disabled={loading} className="flex w-full items-center justify-center gap-2 rounded-xl bg-white py-3 text-xs font-semibold text-black">{loading?(sent?"Verifying…":"Sending…"):(sent?"Verify OTP":"Send OTP")}<Send size={14}/></button></form>{errorMsg&&<p className="mt-3 text-[11px] text-red-400">{errorMsg}</p>}</div>}</>}</aside>
   </div><div className="fixed bottom-4 left-1/2 flex -translate-x-1/2 gap-1 rounded-full border border-white/10 bg-[#10141c]/90 p-1 shadow-2xl backdrop-blur-xl lg:hidden">{[[Home,"Home"],[Compass,"Discover"],[Plus,"Create"],[MessageCircle,"Chat"],[Bell,"Alerts"],[UserRound,"Me"]].map(([I,n]:any)=><button key={n} onClick={()=>{if(n==="Chat"){setView("messages");setMobileChat(false)}if(n==="Home")setView("home");if(n==="Discover")setView("discover");if(n==="Alerts"){setView("notifications");loadNotifications()}if(n==="Me")setView("profile")}} className="grid h-12 w-14 place-items-center text-zinc-400"><I size={19}/></button>)}</div>{errorMsg&&userId&&<div className="fixed bottom-20 left-1/2 z-50 -translate-x-1/2 rounded-xl border border-red-500/20 bg-[#151019] px-4 py-3 text-xs text-red-300">{errorMsg}</div>}</main>;
-}
+}  if(!userId) return (
+    <main className="min-h-screen bg-[#000] text-white selection:bg-white selection:text-black">
+      <div className="grid min-h-screen lg:grid-cols-[1.15fr_.85fr]">
+        <section className="relative hidden overflow-hidden lg:flex lg:items-center lg:justify-center border-r border-white/10">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_35%_35%,rgba(124,58,237,.22),transparent_38%),radial-gradient(circle_at_70%_70%,rgba(34,211,238,.12),transparent_34%)]"/>
+          <div className="relative z-10 max-w-xl px-16">
+            <div className="mb-10 grid h-16 w-16 place-items-center rounded-full bg-white text-black text-3xl font-black">z</div>
+            <h1 className="text-6xl font-black leading-[.95] tracking-[-.06em]">Connect with<br/>what matters.</h1>
+            <p className="mt-7 max-w-md text-sm leading-6 text-zinc-500">A real-time social space for people, ideas, conversations and communities.</p>
+            <div className="mt-10 grid grid-cols-3 gap-3 text-[10px] uppercase tracking-[.16em] text-zinc-600"><span>People</span><span>Stories</span><span>Communities</span></div>
+          </div>
+        </section>
+        <section className="flex min-h-screen items-center px-6 py-10 sm:px-12 lg:px-20">
+          <div className="mx-auto w-full max-w-[430px]">
+            <div className="mb-12 lg:hidden grid h-12 w-12 place-items-center rounded-full bg-white text-black text-2xl font-black">z</div>
+            <p className="text-[11px] font-semibold uppercase tracking-[.22em] text-zinc-600">ZENCHAT</p>
+            <h2 className="mt-3 text-4xl font-bold tracking-[-.04em]">Join the conversation.</h2>
+            <p className="mt-3 text-sm text-zinc-500">Sign up or sign in with your email. We’ll send a secure 6-digit code.</p>
+            <div className="mt-9 rounded-3xl border border-white/10 bg-[#080808] p-6 shadow-2xl">
+              <div className="mb-6 grid grid-cols-2 rounded-xl bg-white/[.04] p-1">
+                <button type="button" className="rounded-lg bg-white py-2.5 text-xs font-semibold text-black">Sign in</button>
+                <button type="button" className="rounded-lg py-2.5 text-xs text-zinc-500">Sign up</button>
+              </div>
+              <form onSubmit={sent?verify:otp} className="space-y-3">
+                <label className="block text-[11px] font-medium text-zinc-400">Email address</label>
+                <input required type="email" value={email} disabled={sent} onChange={e=>setEmail(e.target.value)} placeholder="name@example.com" className="h-12 w-full rounded-xl border border-white/10 bg-white/[.03] px-4 text-sm outline-none transition focus:border-white/30"/>
+                {sent&&<><label className="block pt-2 text-[11px] font-medium text-zinc-400">Verification code</label><input required autoFocus inputMode="numeric" pattern="[0-9]{6}" maxLength={6} value={code} onChange={e=>setCode(e.target.value.replace(/\D/g,"").slice(0,6))} placeholder="000000" className="h-14 w-full rounded-xl border border-white/10 bg-white/[.03] px-4 text-center text-xl tracking-[.55em] outline-none focus:border-white/30"/><button type="button" onClick={()=>{setSent(false);setCode("")}} className="text-[11px] text-zinc-500 hover:text-white">Use a different email</button></>}
+                <button disabled={loading} className="h-12 w-full rounded-xl bg-white text-sm font-bold text-black transition hover:bg-zinc-200 disabled:opacity-50">{loading?(sent?"Verifying…":"Sending code…"):(sent?"Verify and continue":"Continue with email")}</button>
+              </form>
+              {errorMsg&&<p className="mt-4 rounded-xl border border-red-500/20 bg-red-500/5 px-3 py-2 text-xs text-red-300">{errorMsg}</p>}
+              <p className="mt-5 text-[10px] leading-5 text-zinc-600">By continuing, you agree to Zenchat’s Terms and Privacy Policy. No password required.</p>
+            </div>
+            <div className="mt-7 flex items-center gap-3 text-[10px] text-zinc-700"><span className="h-px flex-1 bg-white/5"/>SECURE EMAIL OTP<span className="h-px flex-1 bg-white/5"/></div>
+          </div>
+        </section>
+      </div>
+    </main>
+  );
+
+
