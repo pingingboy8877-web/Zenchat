@@ -1,0 +1,1 @@
+import "./globals.css"; import type { Metadata } from "next"; export const metadata:Metadata={title:"Zenchat — Connect without the noise",description:"A modern social space for conversations, communities and meaningful connections."}; export default function RootLayout({children}:{children:React.ReactNode}){return <html lang="en"><body>{children}</body></html>}
