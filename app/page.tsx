@@ -65,6 +65,10 @@ export default function HomePage() {
   }, []);
 
   async function loadFeed() {
+    if (!userId) {
+      const { data: auth } = await supabase().auth.getUser();
+      if (!auth.user) return;
+    }
     const { data, error } = await supabase()
       .from("posts")
       .select("id,content,created_at,author_id,profiles:author_id(display_name,username,avatar_url),likes(user_id)")
@@ -189,7 +193,7 @@ export default function HomePage() {
               <div className="text-xs text-zinc-500">YOUR SPACE</div>
               <h1 className="text-lg font-semibold">Home</h1>
             </div>
-            <button className="grid h-9 w-9 place-items-center rounded-full bg-white/5"><Search size={18} /></button>
+            <button type="button" className="grid h-9 w-9 place-items-center rounded-full bg-white/5"><Search size={18} /></button>
           </header>
 
           <div className="flex gap-3 overflow-x-auto border-b border-white/5 p-4 scrollbar">
@@ -261,6 +265,8 @@ export default function HomePage() {
                 </article>
               );
             })}
+
+            {errorMsg && <div className="mb-3 rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3 text-xs text-red-300">{errorMsg}</div>}
 
             {userId && feed.length === 0 && (
               <div className="py-16 text-center text-sm text-zinc-600">Your feed is quiet. Be the first to post.</div>
